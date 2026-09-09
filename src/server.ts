@@ -11,7 +11,9 @@ dotenv.config();
 // =====================================================
 
 import express from "express";
-import cors from "cors";
+import cors, {
+  CorsOptions,
+} from "cors";
 
 import connectDB from "./config/db";
 
@@ -51,64 +53,184 @@ const PORT = process.env.PORT || 5000;
 // DATABASE CONNECTION
 // =====================================================
 
-connectDB();
+void connectDB();
 
 // =====================================================
 // EMAIL SMTP CONNECTION
 // =====================================================
 
-verifyEmailConnection();
+void verifyEmailConnection();
 
 // =====================================================
 // CORS CONFIGURATION
 // =====================================================
 
-const allowedOrigins = [
+// Local development origins
+const allowedOrigins: string[] = [
   "http://localhost:3000",
   "http://localhost:5173",
   "http://127.0.0.1:3000",
   "http://127.0.0.1:5173",
 ];
 
-// Add production frontend URL from environment variable
-if (process.env.FRONTEND_URL) {
-  allowedOrigins.push(process.env.FRONTEND_URL);
+// =====================================================
+// PRODUCTION FRONTEND URL
+// =====================================================
+
+// Your current Vercel frontend URL
+const productionFrontendUrl =
+  "https://ems-frontend-beta-seven.vercel.app";
+
+// Add production frontend
+if (
+  !allowedOrigins.includes(
+    productionFrontendUrl
+  )
+) {
+  allowedOrigins.push(
+    productionFrontendUrl
+  );
 }
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests without an origin
-      // Thunder Client
-      // curl
-      // Server-to-server requests
+// Add FRONTEND_URL from Vercel environment
+if (process.env.FRONTEND_URL) {
+  const envFrontendUrl =
+    process.env.FRONTEND_URL
+      .trim()
+      .replace(/\/$/, "");
 
-      if (!origin) {
-        return callback(null, true);
-      }
+  if (
+    envFrontendUrl &&
+    !allowedOrigins.includes(
+      envFrontendUrl
+    )
+  ) {
+    allowedOrigins.push(
+      envFrontendUrl
+    );
+  }
+}
 
-      // Allow registered frontend origins
+// =====================================================
+// CORS OPTIONS
+// =====================================================
 
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+const corsOptions: CorsOptions = {
+  origin: (
+    origin,
+    callback
+  ) => {
+    // -----------------------------------------------
+    // Requests without Origin
+    // Thunder Client
+    // Postman
+    // curl
+    // Server-to-server
+    // -----------------------------------------------
 
-      // Reject unknown origins
+    if (!origin) {
+      return callback(null, true);
+    }
 
-      return callback(
-        new Error("Not allowed by CORS")
+    const normalizedOrigin =
+      origin
+        .trim()
+        .replace(/\/$/, "");
+
+    console.log(
+      "🌐 Incoming Origin:",
+      normalizedOrigin
+    );
+
+    console.log(
+      "✅ Allowed Origins:",
+      allowedOrigins
+    );
+
+    // -----------------------------------------------
+    // Exact origin match
+    // -----------------------------------------------
+
+    if (
+      allowedOrigins.includes(
+        normalizedOrigin
+      )
+    ) {
+      return callback(null, true);
+    }
+
+    // -----------------------------------------------
+    // Allow Vercel preview deployments
+    // belonging to EMS frontend project
+    // -----------------------------------------------
+
+    const isVercelFrontend =
+      normalizedOrigin.startsWith(
+        "https://ems-frontend"
+      ) &&
+      normalizedOrigin.endsWith(
+        ".vercel.app"
       );
-    },
 
-    credentials: true,
-  })
-);
+    if (isVercelFrontend) {
+      console.log(
+        "✅ Vercel frontend origin allowed:",
+        normalizedOrigin
+      );
+
+      return callback(null, true);
+    }
+
+    // -----------------------------------------------
+    // Reject unknown origins
+    // -----------------------------------------------
+
+    console.error(
+      "❌ CORS BLOCKED ORIGIN:",
+      normalizedOrigin
+    );
+
+    // Do not throw an application error.
+    // Simply reject the origin.
+    return callback(null, false);
+  },
+
+  credentials: true,
+
+  methods: [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+  ],
+
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+  ],
+
+  exposedHeaders: [
+    "Content-Length",
+  ],
+
+  optionsSuccessStatus: 204,
+};
+
+// =====================================================
+// APPLY CORS
+// =====================================================
+
+app.use(cors(corsOptions));
 
 // =====================================================
 // BODY PARSER
 // =====================================================
 
-app.use(express.json());
+app.use(
+  express.json()
+);
 
 app.use(
   express.urlencoded({
@@ -241,13 +363,16 @@ app.use(
 // ROOT ROUTE
 // =====================================================
 
-app.get("/", (_req, res) => {
-  res.status(200).json({
-    success: true,
-    message:
-      "EMS-PMS Backend API is running 🚀",
-  });
-});
+app.get(
+  "/",
+  (_req, res) => {
+    res.status(200).json({
+      success: true,
+      message:
+        "EMS-PMS Backend API is running 🚀",
+    });
+  }
+);
 
 // =====================================================
 // HEALTH CHECK
@@ -315,28 +440,31 @@ app.use(
 // START SERVER
 // =====================================================
 
-app.listen(PORT, () => {
-  console.log(
-    "======================================"
-  );
+app.listen(
+  PORT,
+  () => {
+    console.log(
+      "======================================"
+    );
 
-  console.log(
-    "🚀 EMS-PMS BACKEND SERVER"
-  );
+    console.log(
+      "🚀 EMS-PMS BACKEND SERVER"
+    );
 
-  console.log(
-    `🌐 Server running on port ${PORT}`
-  );
+    console.log(
+      `🌐 Server running on port ${PORT}`
+    );
 
-  console.log(
-    `❤️ Health: /api/v1/health`
-  );
+    console.log(
+      "❤️ Health: /api/v1/health"
+    );
 
-  console.log(
-    `🔔 Notifications: /api/v1/notifications`
-  );
+    console.log(
+      "🔔 Notifications: /api/v1/notifications"
+    );
 
-  console.log(
-    "======================================"
-  );
-});
+    console.log(
+      "======================================"
+    );
+  }
+);
