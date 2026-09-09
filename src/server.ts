@@ -1,4 +1,3 @@
-
 // =====================================================
 // ENVIRONMENT CONFIGURATION
 // =====================================================
@@ -13,8 +12,6 @@ dotenv.config();
 
 import express from "express";
 import cors from "cors";
-import path from "path";
-import fs from "fs";
 
 import connectDB from "./config/db";
 
@@ -73,6 +70,11 @@ const allowedOrigins = [
   "http://127.0.0.1:5173",
 ];
 
+// Add production frontend URL from environment variable
+if (process.env.FRONTEND_URL) {
+  allowedOrigins.push(process.env.FRONTEND_URL);
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -103,7 +105,7 @@ app.use(
 );
 
 // =====================================================
-// BODY PARSER & STATIC FILES
+// BODY PARSER
 // =====================================================
 
 app.use(express.json());
@@ -113,13 +115,6 @@ app.use(
     extended: true,
   })
 );
-
-// Static uploads folder
-const uploadsDir = path.resolve(__dirname, "../uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-app.use("/uploads", express.static(uploadsDir));
 
 // =====================================================
 // API ROUTES
@@ -161,45 +156,81 @@ app.use(
   notificationRoutes
 );
 
+// -----------------------------------------------------
+// PROJECT ROUTES
+// -----------------------------------------------------
+
 app.use(
   "/api/v1/projects",
   projectRoutes
 );
+
+// -----------------------------------------------------
+// TASK ROUTES
+// -----------------------------------------------------
 
 app.use(
   "/api/v1/tasks",
   taskRoutes
 );
 
+// -----------------------------------------------------
+// SPRINT ROUTES
+// -----------------------------------------------------
+
 app.use(
   "/api/v1/sprints",
   sprintRoutes
 );
+
+// -----------------------------------------------------
+// STANDUP ROUTES
+// -----------------------------------------------------
 
 app.use(
   "/api/v1/standups",
   standupRoutes
 );
 
+// -----------------------------------------------------
+// LEAVE ROUTES
+// -----------------------------------------------------
+
 app.use(
   "/api/v1/leaves",
   leaveRoutes
 );
+
+// -----------------------------------------------------
+// DASHBOARD ROUTES
+// -----------------------------------------------------
 
 app.use(
   "/api/v1/dashboard",
   dashboardRoutes
 );
 
+// -----------------------------------------------------
+// REPORT ROUTES
+// -----------------------------------------------------
+
 app.use(
   "/api/v1/reports",
   reportRoutes
 );
 
+// -----------------------------------------------------
+// AUDIT LOG ROUTES
+// -----------------------------------------------------
+
 app.use(
   "/api/v1/audit-logs",
   auditLogRoutes
 );
+
+// -----------------------------------------------------
+// LOGIN SESSION ROUTES
+// -----------------------------------------------------
 
 app.use(
   "/api/v1/login-sessions",
@@ -294,19 +325,18 @@ app.listen(PORT, () => {
   );
 
   console.log(
-    `🌐 Server running on http://localhost:${PORT}`
+    `🌐 Server running on port ${PORT}`
   );
 
   console.log(
-    `❤️ Health: http://localhost:${PORT}/api/v1/health`
+    `❤️ Health: /api/v1/health`
   );
 
   console.log(
-    `🔔 Notifications: http://localhost:${PORT}/api/v1/notifications`
+    `🔔 Notifications: /api/v1/notifications`
   );
 
   console.log(
     "======================================"
   );
 });
-
