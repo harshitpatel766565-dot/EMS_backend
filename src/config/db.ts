@@ -1,65 +1,119 @@
 import mongoose from "mongoose";
 
-let connectionPromise: Promise<typeof mongoose> | null = null;
+// =====================================================
+// CONNECT TO MONGODB
+// =====================================================
 
 const connectDB = async (): Promise<void> => {
+  const mongoURI = process.env.MONGO_URI;
+
+  // ===================================================
+  // CHECK MONGO URI
+  // ===================================================
+
+  if (!mongoURI) {
+    throw new Error(
+      "MONGO_URI is not defined"
+    );
+  }
+
+  // ===================================================
+  // ALREADY CONNECTED
+  // ===================================================
+
+  if (
+    mongoose.connection.readyState === 1
+  ) {
+    console.log(
+      "MongoDB already connected ✅"
+    );
+
+    return;
+  }
+
+  // ===================================================
+  // CONNECTION ALREADY IN PROGRESS
+  // ===================================================
+
+  if (
+    mongoose.connection.readyState === 2
+  ) {
+    console.log(
+      "MongoDB connection already in progress..."
+    );
+
+    await mongoose.connection.asPromise();
+
+    console.log(
+      "MongoDB connection completed ✅"
+    );
+
+    return;
+  }
+
+  // ===================================================
+  // START CONNECTION
+  // ===================================================
+
+  console.log(
+    "🔄 Connecting to MongoDB Atlas..."
+  );
+
   try {
-    const mongoURI = process.env.MONGO_URI;
+    await mongoose.connect(
+      mongoURI,
+      {
+        // ---------------------------------------------
+        // Connection timeout
+        // ---------------------------------------------
 
-    if (!mongoURI) {
-      console.error("❌ MONGO_URI is not defined");
-      return;
-    }
+        serverSelectionTimeoutMS: 30000,
 
-    // Already connected
-    if (mongoose.connection.readyState === 1) {
-      console.log("MongoDB already connected ✅");
-      return;
-    }
+        connectTimeoutMS: 30000,
 
-    // Reuse an existing connection attempt
-    if (mongoose.connection.readyState === 2 && connectionPromise) {
-      await connectionPromise;
-      return;
-    }
+        socketTimeoutMS: 45000,
 
-    console.log("🔄 Connecting to MongoDB Atlas...");
+        // ---------------------------------------------
+        // Prefer IPv4
+        // ---------------------------------------------
 
-    connectionPromise = mongoose.connect(mongoURI, {
-      // MongoDB connection settings
-      serverSelectionTimeoutMS: 30000,
-      connectTimeoutMS: 30000,
-      socketTimeoutMS: 45000,
+        family: 4,
 
-      // Prefer IPv4 for Vercel/serverless networking
-      family: 4,
+        // ---------------------------------------------
+        // Connection pool
+        // ---------------------------------------------
 
-      // Connection pool
-      maxPoolSize: 10,
-      minPoolSize: 0,
-      maxIdleTimeMS: 10000,
+        maxPoolSize: 10,
 
-      // MongoDB retry support
-      retryWrites: true,
-      retryReads: true,
-    });
+        minPoolSize: 0,
 
-    await connectionPromise;
+        maxIdleTimeMS: 10000,
 
-    console.log("MongoDB Connected Successfully ✅");
+        // ---------------------------------------------
+        // Retry support
+        // ---------------------------------------------
 
-    connectionPromise = null;
+        retryWrites: true,
+
+        retryReads: true,
+      }
+    );
+
+    console.log(
+      "MongoDB Connected Successfully ✅"
+    );
   } catch (error) {
-    connectionPromise = null;
-
     console.error(
       "MongoDB Connection Failed ❌",
       error
     );
 
-    // Do not use process.exit(1) on Vercel/serverless.
-    // Keep the function alive so Vercel can handle the request.
+    throw error;
   }
 };
+
+// =====================================================
+// EXPORT
+// =====================================================
 
 export default connectDB;

@@ -181,7 +181,11 @@ export const getLeaves = async (
     }
 
     const leaves = await LeaveRequest.find(filter)
-      .populate("employee", "name email employeeId avatar designation department")
+      .populate({
+        path: "employee",
+        select: "name email employeeId avatar designation department",
+        populate: { path: "department", select: "name" },
+      })
       .populate("approvedBy", "name email")
       .sort({ createdAt: -1 });
 
@@ -557,6 +561,130 @@ export const getMyLeaveBalances = async (
     res.status(500).json({
       success: false,
       message: error?.message || "Failed to fetch leave balances",
+    });
+  }
+};
+
+// =====================================================
+// GET LEAVE STATS FOR EMPLOYEE OR ADMIN
+// =====================================================
+
+export const getLeaveStats = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+      return;
+    }
+
+    const { employeeId } = req.query;
+    let targetEmployeeId = req.user.userId;
+
+    if (
+      employeeId &&
+      (req.user.role === "SUPER_ADMIN" || req.user.role === "PROJECT_MANAGER") &&
+      mongoose.Types.ObjectId.isValid(String(employeeId))
+    ) {
+      targetEmployeeId = String(employeeId);
+    }
+
+    const targetUser = await User.findById(targetEmployeeId)
+      .select("name email employeeId avatar designation leaveBalance department")
+      .populate("department", "name");
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+
+    const startOfYear = new Date(currentYear, 0, 1);
+
+    // Fetch all leaves for employee
+    const allEmployeeLeaves = await LeaveRequest.find({
+      employee: targetEmployeeId,
+    }).sort({ createdAt: -1 });
+
+    let totalTakenTillToday = 0;
+    let annualUsed = 0;
+    let currentMonthUsed = 0;
+    const breakdown = {
+      casual: 0,
+      sick: 0,
+      earned: 0,
+      other: 0,
+    };
+
+    for (const leave of allEmployeeLeaves) {
+      if (leave.status !== "APPROVED") continue;
+
+      const days = leave.days || 1;
+      const leaveStart = new Date(leave.startDate);
+      const leaveEnd = new Date(leave.endDate);
+
+      // Category breakdown
+      const typeKey = String(leave.leaveType).toLowerCase();
+      if (typeKey === "casual") breakdown.casual += days;
+      else if (typeKey === "sick") breakdown.sick += days;
+      else if (typeKey === "earned") breakdown.earned += days;
+      else breakdown.other += days;
+
+      // Till today
+      if (leaveEnd <= now || leaveStart <= now) {
+        totalTakenTillToday += days;
+      }
+
+      // Annual (current year)
+      if (leaveStart >= startOfYear || leaveEnd >= startOfYear) {
+        annualUsed += days;
+      }
+
+      // Current Month
+      if (
+        (leaveStart.getFullYear() === currentYear && leaveStart.getMonth() === currentMonth) ||
+        (leaveEnd.getFullYear() === currentYear && leaveEnd.getMonth() === currentMonth)
+      ) {
+        currentMonthUsed += days;
+      }
+    }
+
+    const balances = targetUser?.leaveBalance || {
+      casual: 12,
+      sick: 10,
+      earned: 15,
+    };
+
+    const formattedHistory = allEmployeeLeaves.slice(0, 10).map(formatLeaveResponse);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        employeeId: targetEmployeeId,
+        employeeName: targetUser?.name || "Employee",
+        employeeCode: targetUser?.employeeId || "",
+        employeeAvatar: targetUser?.avatar || undefined,
+        designation: targetUser?.designation || "",
+        department:
+          typeof targetUser?.department === "object" && (targetUser?.department as any)?.name
+            ? (targetUser?.department as any).name
+            : "",
+        totalTakenTillToday,
+        annualQuota: (balances.casual || 12) + (balances.sick || 10) + (balances.earned || 15) + annualUsed,
+        annualUsed,
+        currentMonthUsed,
+        balances,
+        breakdown,
+        history: formattedHistory,
+      },
+    });
+  } catch (error: any) {
+    console.error("Get Leave Stats Error:", error);
+    res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to fetch leave statistics",
     });
   }
 };

@@ -45,31 +45,19 @@ import { verifyEmailConnection } from "./services/emailService";
 
 const app = express();
 
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
 
 // =====================================================
-// DATABASE CONNECTION
+// CORS CONFIGURATION
 // =====================================================
 
-void connectDB();
-
-// =====================================================
-// EMAIL SMTP CONNECTION
-// =====================================================
-
-void verifyEmailConnection();
-
-// =====================================================
-// CORS HELPERS
-// =====================================================
-
-const normalizeOrigin = (origin: string): string => {
-  return origin.trim().replace(/\/$/, "");
+const normalizeOrigin = (value: string): string => {
+  return value.trim().replace(/\/$/, "");
 };
 
-// =====================================================
-// ALLOWED ORIGINS
-// =====================================================
+// -----------------------------------------------------
+// Allowed Origins
+// -----------------------------------------------------
 
 const allowedOrigins: string[] = [
   // Local development
@@ -78,13 +66,13 @@ const allowedOrigins: string[] = [
   "http://127.0.0.1:3000",
   "http://127.0.0.1:5173",
 
-  // Current production frontend
+  // Production frontend
   "https://ems-frontend-beta-seven.vercel.app",
 ];
 
-// =====================================================
-// ADD FRONTEND_URL FROM ENVIRONMENT
-// =====================================================
+// -----------------------------------------------------
+// FRONTEND_URL from Environment Variable
+// -----------------------------------------------------
 
 if (process.env.FRONTEND_URL) {
   const frontendUrl = normalizeOrigin(
@@ -100,20 +88,13 @@ if (process.env.FRONTEND_URL) {
 }
 
 // =====================================================
-// CORS CONFIGURATION
+// CORS OPTIONS
 // =====================================================
 
 const corsOptions: CorsOptions = {
-  origin: (
-    origin,
-    callback
-  ) => {
+  origin: (origin, callback) => {
     // -------------------------------------------------
     // Requests without Origin
-    // -------------------------------------------------
-    // Thunder Client
-    // curl
-    // server-to-server requests
     // -------------------------------------------------
 
     if (!origin) {
@@ -148,23 +129,32 @@ const corsOptions: CorsOptions = {
     }
 
     // -------------------------------------------------
-    // Allow EMS Vercel frontend deployments
-    // -------------------------------------------------
-    //
-    // Example:
-    // https://ems-frontend-beta-seven.vercel.app
-    // https://ems-frontend-xxxxx.vercel.app
-    //
+    // Allow Vercel preview deployments
+    // for EMS frontend
     // -------------------------------------------------
 
-    const isEmsFrontendVercel =
-      /^https:\/\/ems-frontend(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(
+    let isEmsFrontendVercel = false;
+
+    try {
+      const originUrl = new URL(
         normalizedOrigin
       );
 
+      const hostname =
+        originUrl.hostname;
+
+      isEmsFrontendVercel =
+        originUrl.protocol === "https:" &&
+        /^ems-frontend(?:-[a-z0-9-]+)*\.vercel\.app$/i.test(
+          hostname
+        );
+    } catch {
+      isEmsFrontendVercel = false;
+    }
+
     if (isEmsFrontendVercel) {
       console.log(
-        "✅ EMS Frontend Vercel Origin Allowed:",
+        "✅ EMS Frontend Vercel Allowed:",
         normalizedOrigin
       );
 
@@ -173,28 +163,18 @@ const corsOptions: CorsOptions = {
     }
 
     // -------------------------------------------------
-    // Unknown origin
+    // Reject unknown origin
     // -------------------------------------------------
 
     console.error(
-      "❌ CORS Blocked Origin:",
+      "❌ CORS Blocked:",
       normalizedOrigin
     );
 
-    // Do NOT throw an error here.
-    // Simply reject the CORS request.
     callback(null, false);
   },
 
-  // ---------------------------------------------------
-  // Credentials
-  // ---------------------------------------------------
-
   credentials: true,
-
-  // ---------------------------------------------------
-  // Methods
-  // ---------------------------------------------------
 
   methods: [
     "GET",
@@ -205,26 +185,14 @@ const corsOptions: CorsOptions = {
     "OPTIONS",
   ],
 
-  // ---------------------------------------------------
-  // Headers
-  // ---------------------------------------------------
-
   allowedHeaders: [
     "Content-Type",
     "Authorization",
+    "Cache-Control",
+    "Pragma",
+    "X-Requested-With",
+    "Accept",
   ],
-
-  // ---------------------------------------------------
-  // Exposed headers
-  // ---------------------------------------------------
-
-  exposedHeaders: [
-    "Content-Length",
-  ],
-
-  // ---------------------------------------------------
-  // Preflight
-  // ---------------------------------------------------
 
   optionsSuccessStatus: 204,
 };
@@ -233,11 +201,7 @@ const corsOptions: CorsOptions = {
 // APPLY CORS
 // =====================================================
 
-app.use(cors(corsOptions));
-
-// Explicit OPTIONS handling
-app.options(
-  "*",
+app.use(
   cors(corsOptions)
 );
 
@@ -253,6 +217,65 @@ app.use(
   express.urlencoded({
     extended: true,
   })
+);
+
+// =====================================================
+// ROOT ROUTE
+// =====================================================
+
+app.get(
+  "/",
+  (_req, res) => {
+    res.status(200).json({
+      success: true,
+      message:
+        "EMS-PMS Backend API is running 🚀",
+    });
+  }
+);
+
+// =====================================================
+// HEALTH CHECK
+// =====================================================
+
+app.get(
+  "/api/v1/health",
+  (_req, res) => {
+    res.status(200).json({
+      success: true,
+      message:
+        "EMS-PMS API is healthy",
+    });
+  }
+);
+
+// =====================================================
+// DATABASE CONNECTION MIDDLEWARE
+// =====================================================
+//
+// Every API request waits until MongoDB
+// connection is available.
+// =====================================================
+
+app.use(
+  async (_req, res, next) => {
+    try {
+      await connectDB();
+
+      next();
+    } catch (error) {
+      console.error(
+        "❌ Database unavailable:",
+        error
+      );
+
+      res.status(503).json({
+        success: false,
+        message:
+          "Database connection unavailable",
+      });
+    }
+  }
 );
 
 // =====================================================
@@ -377,36 +400,6 @@ app.use(
 );
 
 // =====================================================
-// ROOT ROUTE
-// =====================================================
-
-app.get(
-  "/",
-  (_req, res) => {
-    res.status(200).json({
-      success: true,
-      message:
-        "EMS-PMS Backend API is running 🚀",
-    });
-  }
-);
-
-// =====================================================
-// HEALTH CHECK
-// =====================================================
-
-app.get(
-  "/api/v1/health",
-  (_req, res) => {
-    res.status(200).json({
-      success: true,
-      message:
-        "EMS-PMS API is healthy",
-    });
-  }
-);
-
-// =====================================================
 // 404 HANDLER
 // =====================================================
 
@@ -454,6 +447,12 @@ app.use(
 );
 
 // =====================================================
+// EMAIL SMTP CONNECTION
+// =====================================================
+
+void verifyEmailConnection();
+
+// =====================================================
 // START SERVER
 // =====================================================
 
@@ -485,3 +484,5 @@ app.listen(
     );
   }
 );
+
+export default app;
