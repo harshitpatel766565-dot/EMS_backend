@@ -269,31 +269,48 @@ export const uploadMyProfilePhoto = async (
         }
 
         // ========================================================
-        // LOCAL DISK STORAGE FALLBACK
+        // DISK STORAGE & BASE64 FALLBACK (SERVERLESS / VERCEL SAFE)
         // ========================================================
 
         if (!uploadedAvatarUrl) {
-            const uploadsDir = path.resolve(__dirname, "../../uploads");
+            const isVercel = !!process.env.VERCEL;
 
-            if (!fs.existsSync(uploadsDir)) {
-                fs.mkdirSync(uploadsDir, { recursive: true });
+            if (!isVercel) {
+                try {
+                    const uploadsDir = path.resolve(__dirname, "../../uploads");
+
+                    if (!fs.existsSync(uploadsDir)) {
+                        fs.mkdirSync(uploadsDir, { recursive: true });
+                    }
+
+                    let ext = path.extname(req.file.originalname).toLowerCase();
+                    if (!ext || ext === ".") {
+                        if (req.file.mimetype === "image/png") ext = ".png";
+                        else if (req.file.mimetype === "image/webp") ext = ".webp";
+                        else if (req.file.mimetype === "image/gif") ext = ".gif";
+                        else ext = ".jpg";
+                    }
+
+                    const filename = `avatar-${userId}-${Date.now()}${ext}`;
+                    const filePath = path.join(uploadsDir, filename);
+
+                    await fs.promises.writeFile(filePath, req.file.buffer);
+
+                    // Local URL for static file serving
+                    uploadedAvatarUrl = `${req.protocol}://${req.get("host")}/uploads/${filename}`;
+                } catch (diskErr) {
+                    console.warn(
+                        "Local disk storage failed, falling back to Base64:",
+                        diskErr
+                    );
+                }
             }
 
-            let ext = path.extname(req.file.originalname).toLowerCase();
-            if (!ext || ext === ".") {
-                if (req.file.mimetype === "image/png") ext = ".png";
-                else if (req.file.mimetype === "image/webp") ext = ".webp";
-                else if (req.file.mimetype === "image/gif") ext = ".gif";
-                else ext = ".jpg";
+            // Fallback to Base64 Data URL for Vercel / serverless environment without Cloudinary
+            if (!uploadedAvatarUrl) {
+                const base64Data = req.file.buffer.toString("base64");
+                uploadedAvatarUrl = `data:${req.file.mimetype};base64,${base64Data}`;
             }
-
-            const filename = `avatar-${userId}-${Date.now()}${ext}`;
-            const filePath = path.join(uploadsDir, filename);
-
-            await fs.promises.writeFile(filePath, req.file.buffer);
-
-            // Local URL for static file serving
-            uploadedAvatarUrl = `${req.protocol}://${req.get("host")}/uploads/${filename}`;
         }
 
         // ========================================================

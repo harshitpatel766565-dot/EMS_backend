@@ -12,6 +12,7 @@ dotenv.config();
 
 import express from "express";
 import cors, { CorsOptions } from "cors";
+import path from "path";
 
 import connectDB from "./config/db";
 
@@ -217,6 +218,19 @@ app.use(
   express.urlencoded({
     extended: true,
   })
+);
+
+// =====================================================
+// STATIC FILE SERVING (UPLOADS)
+// =====================================================
+
+app.use(
+  "/uploads",
+  express.static(path.resolve(__dirname, "../uploads"))
+);
+app.use(
+  "/uploads",
+  express.static(path.resolve(__dirname, "../../uploads"))
 );
 
 // =====================================================
