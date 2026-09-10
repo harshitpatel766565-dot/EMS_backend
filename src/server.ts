@@ -11,9 +11,7 @@ dotenv.config();
 // =====================================================
 
 import express from "express";
-import cors, {
-  CorsOptions,
-} from "cors";
+import cors, { CorsOptions } from "cors";
 
 import connectDB from "./config/db";
 
@@ -62,57 +60,47 @@ void connectDB();
 void verifyEmailConnection();
 
 // =====================================================
-// CORS CONFIGURATION
+// CORS HELPERS
 // =====================================================
 
-// Local development origins
+const normalizeOrigin = (origin: string): string => {
+  return origin.trim().replace(/\/$/, "");
+};
+
+// =====================================================
+// ALLOWED ORIGINS
+// =====================================================
+
 const allowedOrigins: string[] = [
+  // Local development
   "http://localhost:3000",
   "http://localhost:5173",
   "http://127.0.0.1:3000",
   "http://127.0.0.1:5173",
+
+  // Current production frontend
+  "https://ems-frontend-beta-seven.vercel.app",
 ];
 
 // =====================================================
-// PRODUCTION FRONTEND URL
+// ADD FRONTEND_URL FROM ENVIRONMENT
 // =====================================================
 
-// Your current Vercel frontend URL
-const productionFrontendUrl =
-  "https://ems-frontend-beta-seven.vercel.app";
-
-// Add production frontend
-if (
-  !allowedOrigins.includes(
-    productionFrontendUrl
-  )
-) {
-  allowedOrigins.push(
-    productionFrontendUrl
-  );
-}
-
-// Add FRONTEND_URL from Vercel environment
 if (process.env.FRONTEND_URL) {
-  const envFrontendUrl =
+  const frontendUrl = normalizeOrigin(
     process.env.FRONTEND_URL
-      .trim()
-      .replace(/\/$/, "");
+  );
 
   if (
-    envFrontendUrl &&
-    !allowedOrigins.includes(
-      envFrontendUrl
-    )
+    frontendUrl &&
+    !allowedOrigins.includes(frontendUrl)
   ) {
-    allowedOrigins.push(
-      envFrontendUrl
-    );
+    allowedOrigins.push(frontendUrl);
   }
 }
 
 // =====================================================
-// CORS OPTIONS
+// CORS CONFIGURATION
 // =====================================================
 
 const corsOptions: CorsOptions = {
@@ -120,82 +108,93 @@ const corsOptions: CorsOptions = {
     origin,
     callback
   ) => {
-    // -----------------------------------------------
+    // -------------------------------------------------
     // Requests without Origin
+    // -------------------------------------------------
     // Thunder Client
-    // Postman
     // curl
-    // Server-to-server
-    // -----------------------------------------------
+    // server-to-server requests
+    // -------------------------------------------------
 
     if (!origin) {
-      return callback(null, true);
+      callback(null, true);
+      return;
     }
 
     const normalizedOrigin =
-      origin
-        .trim()
-        .replace(/\/$/, "");
+      normalizeOrigin(origin);
 
     console.log(
       "🌐 Incoming Origin:",
       normalizedOrigin
     );
 
-    console.log(
-      "✅ Allowed Origins:",
-      allowedOrigins
-    );
-
-    // -----------------------------------------------
+    // -------------------------------------------------
     // Exact origin match
-    // -----------------------------------------------
+    // -------------------------------------------------
 
     if (
       allowedOrigins.includes(
         normalizedOrigin
       )
     ) {
-      return callback(null, true);
-    }
-
-    // -----------------------------------------------
-    // Allow Vercel preview deployments
-    // belonging to EMS frontend project
-    // -----------------------------------------------
-
-    const isVercelFrontend =
-      normalizedOrigin.startsWith(
-        "https://ems-frontend"
-      ) &&
-      normalizedOrigin.endsWith(
-        ".vercel.app"
-      );
-
-    if (isVercelFrontend) {
       console.log(
-        "✅ Vercel frontend origin allowed:",
+        "✅ CORS Allowed:",
         normalizedOrigin
       );
 
-      return callback(null, true);
+      callback(null, true);
+      return;
     }
 
-    // -----------------------------------------------
-    // Reject unknown origins
-    // -----------------------------------------------
+    // -------------------------------------------------
+    // Allow EMS Vercel frontend deployments
+    // -------------------------------------------------
+    //
+    // Example:
+    // https://ems-frontend-beta-seven.vercel.app
+    // https://ems-frontend-xxxxx.vercel.app
+    //
+    // -------------------------------------------------
+
+    const isEmsFrontendVercel =
+      /^https:\/\/ems-frontend(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(
+        normalizedOrigin
+      );
+
+    if (isEmsFrontendVercel) {
+      console.log(
+        "✅ EMS Frontend Vercel Origin Allowed:",
+        normalizedOrigin
+      );
+
+      callback(null, true);
+      return;
+    }
+
+    // -------------------------------------------------
+    // Unknown origin
+    // -------------------------------------------------
 
     console.error(
-      "❌ CORS BLOCKED ORIGIN:",
+      "❌ CORS Blocked Origin:",
       normalizedOrigin
     );
 
-    // Do not throw an application error.
-    // Simply reject the origin.
-    return callback(null, false);
+    // Do NOT throw an error here.
+    // Simply reject the CORS request.
+    callback(null, false);
   },
 
+  // ---------------------------------------------------
+  // Credentials
+  // ---------------------------------------------------
+
   credentials: true,
+
+  // ---------------------------------------------------
+  // Methods
+  // ---------------------------------------------------
 
   methods: [
     "GET",
@@ -206,14 +205,26 @@ const corsOptions: CorsOptions = {
     "OPTIONS",
   ],
 
+  // ---------------------------------------------------
+  // Headers
+  // ---------------------------------------------------
+
   allowedHeaders: [
     "Content-Type",
     "Authorization",
   ],
 
+  // ---------------------------------------------------
+  // Exposed headers
+  // ---------------------------------------------------
+
   exposedHeaders: [
     "Content-Length",
   ],
+
+  // ---------------------------------------------------
+  // Preflight
+  // ---------------------------------------------------
 
   optionsSuccessStatus: 204,
 };
@@ -223,6 +234,12 @@ const corsOptions: CorsOptions = {
 // =====================================================
 
 app.use(cors(corsOptions));
+
+// Explicit OPTIONS handling
+app.options(
+  "*",
+  cors(corsOptions)
+);
 
 // =====================================================
 // BODY PARSER
